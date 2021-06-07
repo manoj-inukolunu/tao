@@ -1,6 +1,7 @@
 package me.tao.dao;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.Lists;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -58,17 +59,10 @@ public class AssociationManager {
 
 
   private String getDbName(Long id1) {
-    String dbName = "db";
-    StringBuilder shardId = new StringBuilder(shardManager.getSharedFromId(id1) + "");
-    int len = shardId.length();
-    if (len < 5) {
-      for (int i = 0; i < 5 - len; i++) {
-        shardId.insert(0, "0");
-      }
-    }
-    dbName += shardId;
-    return dbName;
+    List<String> shards = Lists.newArrayList("db00001", "db00002", "db00003", "db00004", "db00005");
+    return shards.get(shardManager.getSharedFromId(id1));
   }
+
 
   public List<Association> assocRange(Long id1, Integer type, Integer pos, Integer limit) throws Exception {
     int count = getCount(id1, type);
@@ -92,7 +86,7 @@ public class AssociationManager {
     Jedis jedis = jedisPool.getResource();
     List<Association> list = new ArrayList<>();
     if (jedis.exists(key)) {
-      Association last = objectMapper.readValue(jedis.zrange(key, 0, 0).iterator().next(), Association.class);
+      Association last = objectMapper.readValue(jedis.zrevrange(key, 0, 0).iterator().next(), Association.class);
       //high > low>=last
       if (low >= last.getTime()) {
         Set<String> data = jedis.zrevrangeByScore(key, high, low, 0, limit);

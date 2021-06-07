@@ -19,7 +19,6 @@ import java.util.Set;
 import javax.sql.DataSource;
 import me.tao.common.DbShardManager;
 import me.tao.common.ShardManager;
-import me.tao.controller.AssocQueryController;
 import me.tao.dao.AssociationManager;
 import me.tao.model.Association;
 import me.tao.model.TObject;
@@ -28,6 +27,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 import org.apache.commons.io.IOUtils;
 import org.checkerframework.checker.units.qual.A;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -45,8 +45,6 @@ public class TaoApplicationTests {
   JdbcTemplate jdbcTemplate;
 
 
-  AssocQueryController controller;
-
   private static final ObjectMapper mapper = new ObjectMapper();
   AssociationManager loader;
 
@@ -55,7 +53,6 @@ public class TaoApplicationTests {
     jedisPool = new JedisPool(new JedisPoolConfig(), "localhost");
     jdbcTemplate = jdbcTemplate(mysqlDataSource());
     manager = new DbShardManager(jdbcTemplate, jedisPool);
-    controller = new AssocQueryController(jedisPool, manager, jdbcTemplate);
     loader = new AssociationManager(manager, jedisPool, jdbcTemplate);
   }
 
@@ -74,28 +71,9 @@ public class TaoApplicationTests {
     return dataSource;
   }
 
-  @Test
-  public void testTime() {
-    System.out.println(Integer.MAX_VALUE);
-    System.out.println((long) Math.pow(2, 32));
-  }
 
-  @Test
-  public void testObject() {
-
-    long seconds = Instant.now().getEpochSecond();
-    System.out.println("Seconds : " + seconds);
-    int machineId = new Random().nextInt((int) Math.pow(2, 16));
-    System.out.println("MachineId : " + machineId);
-    long id = manager.getObjectId(5656, seconds, machineId);
-    System.out.println(id);
-    System.out.println((id >> 48) & 0xFFFF);
-    System.out.println((id >> 16) & Integer.MAX_VALUE);
-  }
-
-
-  @Test
-  void saveObjectTest() {
+  private List<Long> saveObjects() {
+    List<Long> ret = new ArrayList<>();
     for (int i = 0; i < 2; i++) {
       TObject object = new TObject();
       object.setType(new Random().nextInt(20));
@@ -103,13 +81,11 @@ public class TaoApplicationTests {
       object.setTime((int) (System.currentTimeMillis() / 1000));
       data.put("key-" + new Random().nextInt(), "value-" + new Random().nextInt());
       object.setData(data);
-      System.out.println(manager.savetObject(object));
+      ret.add(manager.savetObject(object));
     }
-    /*long id = manager.getObjectId(0, 0, 1);
-    System.out.println(id);
-    System.out.println(manager.getTypeFromObjectId(68719476736l));*/
+    return ret;
   }
-
+/*
   @Test
   public void webhook() {
     OkHttpClient client = new OkHttpClient();
@@ -122,46 +98,34 @@ public class TaoApplicationTests {
     } catch (Exception e) {
       e.printStackTrace();
     }
-  }
+  }*/
 
   @Test
   public void testCreateAssociations() throws Exception {
-  /*  try (Jedis jedis = jedisPool.getResource()) {
-      Map<String, String> objects = jedis.hgetAll("objects");
-      List<Entry<String, String>> entryList = new ArrayList<>(objects.entrySet());
-      TObject one = mapper.readValue(entryList.get(new Random().nextInt(entryList.size())).getValue(), TObject.class);
-      TObject two = mapper.readValue(entryList.get(new Random().nextInt(entryList.size())).getValue(), TObject.class);
-      AssociationManager loader = new AssociationManager(manager, jedisPool, jdbcTemplate);
-      Map<String, String> data = new HashMap<>();
-      data.put("assocDataKey-" + new Random().nextInt(), "assocDataValue-" + new Random().nextInt());
-      System.out.println(manager.getSharedFromId(one.getId()));
-      loader.assocAdd(one.getId(), new Random().nextInt(20), two.getId(), System.currentTimeMillis() / 1000, data);
-    }*/
+    dropAndCreateTables();
+    deleteRedisData();
+    List<Long> objects = saveObjects();
     for (int i = 0; i < 1000; i++) {
       try (Jedis jedis = jedisPool.getResource()) {
-        TObject one = mapper.readValue(jedis.hget("objects", "669314670191935"), TObject.class);
-        TObject two = mapper.readValue(jedis.hget("objects", "387839693502125"), TObject.class);
-
+        TObject one = mapper.readValue(jedis.hget("objects", objects.get(0) + ""), TObject.class);
+        TObject two = mapper.readValue(jedis.hget("objects", objects.get(1) + ""), TObject.class);
         Map<String, String> data = new HashMap<>();
         data.put("assocDataKey-" + new Random().nextInt(), "assocDataValue-" + new Random().nextInt());
-        loader.assocAdd(one.getId(), new Random().nextInt(20), two.getId(), System.currentTimeMillis(), data);
+        loader.assocAdd(one.getId(), new Random().nextInt(20), two.getId(), i, data);
+      } catch (Exception e) {
+        e.printStackTrace();
       }
     }
   }
 
-  @Test
-  public void updateRedis() throws Exception {
+  private void deleteRedisData() {
     try (Jedis jedis = jedisPool.getResource()) {
-      Map<String, String> objects = jedis.hgetAll("objects");
-      for (String str : objects.keySet()) {
-        TObject tObject = mapper.readValue(objects.get(str), TObject.class);
-        tObject.setId(Long.parseLong(str));
-        jedis.hset("objects1", str, mapper.writeValueAsString(tObject));
-      }
+      jedis.select(0);
+      jedis.flushDB();
     }
   }
 
-  @Test
+
   public void dropAndCreateTables() throws Exception {
     String associations = IOUtils.toString(Resources.getResource("associations.sql").openStream());
     String objects = IOUtils.toString(Resources.getResource("objects.sql").openStream());
@@ -181,15 +145,11 @@ public class TaoApplicationTests {
   }
 
   @Test
-  public void testGetShardId() throws Exception {
-    System.out.println(manager.getSharedFromId(669314670191935l));
-  }
-
-  @Test
   public void testGetAssocRange() throws Exception {
-    List<Association> associations = loader.assocRange(669314670191935l, 1, 0, 10);
-    String dbName = getDbName(669314670191935l);
-    String sql = "select * from " + dbName + ".associations where type = 1 and id1=669314670191935 order by timestamp desc limit 11";
+    List<TObject> tObjects = getObjects();
+    List<Association> associations = loader.assocRange(tObjects.get(0).getId(), 1, 0, 10);
+    String dbName = getDbName(tObjects.get(0).getId());
+    String sql = "select * from " + dbName + ".associations where type = 1 and id1=" + tObjects.get(0).getId() + " order by timestamp desc limit 11";
     List<Association> fromDb = new ArrayList<>();
     jdbcTemplate.query(sql, resultSet -> {
       do {
@@ -207,6 +167,17 @@ public class TaoApplicationTests {
     for (int i = 0; i < associations.size(); i++) {
       assertEquals(associations.get(i).toString(), fromDb.get(i).toString());
     }
+  }
+
+  private List<TObject> getObjects() throws JsonProcessingException {
+    Jedis jedis = jedisPool.getResource();
+    Map<String, String> objects = jedis.hgetAll("objects");
+    List<TObject> tObjects = new ArrayList<>();
+    for (String str : objects.keySet()) {
+      TObject tObject = mapper.readValue(objects.get(str), TObject.class);
+      tObjects.add(tObject);
+    }
+    return tObjects;
   }
 
 
@@ -235,15 +206,15 @@ public class TaoApplicationTests {
   }
 
   private String getDbName(Long id1) {
-    String dbName = "db";
-    StringBuilder shardId = new StringBuilder(manager.getSharedFromId(id1) + "");
-    int len = shardId.length();
-    if (len < 5) {
-      for (int i = 0; i < 5 - len; i++) {
-        shardId.insert(0, "0");
-      }
-    }
-    dbName += shardId;
-    return dbName;
+    List<String> shards = Lists.newArrayList("db00001", "db00002", "db00003", "db00004", "db00005");
+    return shards.get(manager.getSharedFromId(id1));
+  }
+
+  @Test
+  public void testGetAssocBetween() throws Exception {
+    List<TObject> objects = getObjects();
+    TObject tObject = objects.get(0);
+    List<Association> list = loader.assocTimeRange(tObject.getId(), 1, 10, 15, 3);
+    list.forEach(System.out::println);
   }
 }
