@@ -14,9 +14,6 @@ public class TObject {
     return time;
   }
 
-  public void setTime(int time) {
-    this.time = time;
-  }
 
   public Map<String, String> getData() {
     return data;
@@ -33,4 +30,29 @@ public class TObject {
   public void setType(int type) {
     this.type = type;
   }
+
+  public long id;
+
+  public void setTime(long time) {
+    this.time = time;
+  }
+
+  public long getId() {
+    return id;
+  }
+
+  @Override
+  public String toString() {
+    return "TObject{" +
+        "data=" + data +
+        ", type=" + type +
+        ", time=" + time +
+        ", id=" + id +
+        '}';
+  }
+
+  public void setId(long id) {
+    this.id = id;
+  }
+
 }

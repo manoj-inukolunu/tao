@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import me.tao.common.ShardManager;
 import me.tao.model.Association;
+import org.checkerframework.checker.units.qual.A;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,64 +35,19 @@ public class AssocQueryController {
   public List<Association> assocGet(@RequestParam Long id1, @RequestParam Integer type, @RequestParam Set<Long> ids,
       @RequestParam Integer from, @RequestParam Integer to) {
     List<Association> ret = new ArrayList<>();
-    try (Jedis jedis = jedisPool.getResource()) {
-      for (Long id2 : ids) {
-        if (jedis.hexists("hash", id1 + "-" + type + "-" + id2)) {
-          Map<String, String> data = objectMapper.readValue(jedis.hget("hash", id1 + "-" + type + "-" + id2), Map.class);
-          Association association = new Association();
-          association.setId1(id1);
-          association.setId2(id2);
-          association.setTime(Integer.parseInt(data.get("time")));
-          association.setData(data);
-          ret.add(association);
-        } else {
-          String sql =
-              "select data,time from " + getDbName(id1) + ".associations where id1=" + id1 + " AND id2=" + id2 + " AND time<" + to + " AND time>"
-                  + from;
-          System.out.println(sql);
-          jdbcTemplate.query(sql, resultSet -> {
-            try {
-              Association association = new Association();
-              association.setId1(id1);
-              association.setId2(id2);
-              association.setTime(Integer.parseInt(resultSet.getString("time")));
-              Map<String, String> data = objectMapper.readValue(resultSet.getString("data"), Map.class);
-              association.setData(data);
-              ret.add(association);
-            } catch (JsonProcessingException e) {
-              e.printStackTrace();
-            }
-          });
-        }
-      }
-    } catch (JsonProcessingException e) {
-      e.printStackTrace();
-    }
     return ret;
-  }
-
-  private String getDbName(Long id1) {
-    String dbName = "db";
-    StringBuilder shardId = new StringBuilder(shardManager.getSharedFromId(id1) + "");
-    if (shardId.length() < 5) {
-      for (int i = 0; i < 5 - shardId.length(); i++) {
-        shardId.insert(0, "0");
-      }
-    }
-    dbName += shardId;
-    return dbName;
   }
 
 
   @RequestMapping("/count")
-  public int assocCount(@RequestParam Integer id1, @RequestParam Integer type) {
+  public int assocCount(@RequestParam Long id1, @RequestParam Integer type) {
     return 1;
   }
 
   //assoc range(id1, atype, pos, limit) –
   @RequestMapping("/range")
-  public List<Association> assocRange(@RequestParam Integer id1, @RequestParam Integer type, @RequestParam Integer pos,
-      @RequestParam Integer limit) {
+  public List<Association> assocRange(@RequestParam Long id1, @RequestParam Integer type, @RequestParam Integer pos,
+      @RequestParam Integer limit) throws Exception {
     return new ArrayList<>();
   }
 

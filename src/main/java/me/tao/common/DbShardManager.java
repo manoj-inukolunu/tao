@@ -44,6 +44,7 @@ public class DbShardManager implements ShardManager {
       int shardId = new Random().nextInt(shards.size());
       String database = shards.get(shardId);
       long objectId = getObjectId(shardId, tObject.getTime(), new Random().nextInt((int) Math.pow(2, 16)));
+      tObject.setId(objectId);
       String sql = "insert into %s.object (id,time,data,type) values (%d,%d,%s,%d)";
       jedis.hset("objects", objectId + "", new ObjectMapper().writeValueAsString(tObject));
       jdbcTemplate.update(String.format(sql, database, objectId, tObject.getTime(),
